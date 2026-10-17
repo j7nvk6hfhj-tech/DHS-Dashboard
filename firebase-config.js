@@ -13,8 +13,8 @@ const firebaseConfig = {
   projectId: "dhs-dashboard-97701",
   storageBucket: "dhs-dashboard-97701.firebasestorage.app",
   messagingSenderId: "883924365862",
-  appId: "1:883924365862:web:4e4f77d48c4f89bc332ce7",
-  measurementId: "G-ZBLNWG1WDP"
+  appId: "1:883924365862:web:ba3fef9365889a63332ce7",
+  measurementId: "G-XH9C83FBGE"
 };
 
 // Initialize Firebase
