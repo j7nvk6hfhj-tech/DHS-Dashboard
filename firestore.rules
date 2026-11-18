@@ -1,10 +1,36 @@
 rules_version = '2';
-// DHS Logistics Order Dashboard — who can read and change what.
-// Roles live in the "members" collection: document ID = the person's email in lower case, field "role".
-//   admin    : everything, including the team list and the dealer list
-//   dispatch : add/edit/cancel orders + mark orders dispatched
-//   desk     : add/edit/cancel orders
-//   viewer   : read only
+// DHS Logistics - Orders Dashboard (Alpha): who can read and change what.
+// Designations live in the "members" collection: document ID = the person's email in lower case, field "role".
+// The stored role keys are unchanged from earlier versions; only the names shown in the app changed:
+//   admin    = Admin       : everything
+//   dispatch = Supervisor  : add/change any order not yet dispatched; mark dispatched, correct dispatch time,
+//                            undo dispatch; add dealers; add vehicles and tracking links
+//   desk     = Dispatch    : add orders; change details only of their own orders entered today (not dispatched);
+//                            mark dispatched and undo dispatch; add vehicles and tracking links
+//   Admin, Supervisor and Dispatch can all: cancel any undispatched order (who cancelled is recorded and can't be faked),
+//   put it on hold and release it, change its delivery date or send it to today.
+//   An order on hold can't be dispatched; an advance order can't be dispatched before its day; dispatching needs the
+//   customer's phone number, a vehicle number and a dispatch depot.
+//   dmo      = DMO         : the same rights as a Supervisor (added 5 Nov 2026)
+//   viewer   = Viewer      : read only (no vehicles / tracking links)
+// Only Admin: change order times, change dispatched orders, delete orders, rename or remove dealers, remove vehicles,
+// the team, emails, the staff permission switches.
+// Staff permission switches (config/perms, set by the Admin): Dispatch marking dispatched, cancelling any order,
+// hold / change date; Supervisor correcting dispatch times, adding dealers; staff editing dealer details, adding
+// vehicles. All are on unless the Admin switches them off; these rules check them on every change.
+//   Supervisor and Dispatch can also edit a dealer's contact person, phone and area (not its name).
+// Every change to an order records who made it (updatedBy) and when (updatedAt).
+// One device per account: each member record keeps the time of the newest sign-in ("sess", seconds);
+// a device whose sign-in is older gets no access.
+// Depot stock ledger (stockEntries, stockReports, stockCloses, stockConfig): the Admin and the people on its access list only.
+// Month-end closes (stockCloses): made by the ledger itself on the 1st. Entries only for this month and last month.
+// Maintenance switch (config/maintenance): while on, only the Admin can change anything.
+// 16 Nov 2026: marking an order dispatched also writes its line in the stock ledger (stockEntries/ord_<order id>), in the
+// same write, by whoever marks it; they need not be on the ledger's list and still can't read anything there. The line
+// must match the order. Each dispatch also updates that day's dispatched bags by depot (dispday). Taking any entry off the
+// ledger keeps a copy for the Admin (stockDeleted); corrections need a reason. The Admin's Brief reads stockBrief/latest,
+// which the ledger saves. config/brief (the Brief's alert limits) is the Admin's only. config/stockLink holds when the
+// link started (set by the Admin's first visit to that version; every config record is changed by the Admin only).
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -12,41 +38,291 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.email != null
         && request.auth.token.email_verified == true;
     }
-    function memberPath() {
-      return /databases/$(database)/documents/members/$(request.auth.token.email.lower());
-    }
+    function myEmail() { return request.auth.token.email.lower(); }
+    function memberPath() { return /databases/$(database)/documents/members/$(myEmail()); }
+    function me() { return get(memberPath()).data; }
+    function current() { return me().get('sess', 0) <= request.auth.token.auth_time; }
+    // Maintenance (config/maintenance, switched by the Admin): while it's on, nobody but the Admin can change anything.
+    // Reading still works (so screens can say why), and so does signing in (the member record's own session fields).
+    function maintPath() { return /databases/$(database)/documents/config/maintenance; }
+    function paused() { return exists(maintPath()) && get(maintPath()).data.get('on', false) == true; }
     function role() {
-      return signedIn() && exists(memberPath()) ? get(memberPath()).data.role : 'none';
+      return signedIn() && exists(memberPath()) && current()
+        ? (me().role != 'admin' && request.method in ['create', 'update', 'delete'] && paused() ? 'none' : me().role)
+        : 'none';
     }
-    function isMember()    { return role() in ['admin', 'dispatch', 'desk', 'viewer']; }
-    function canOrder()    { return role() in ['admin', 'dispatch', 'desk']; }
-    function canDispatch() { return role() in ['admin', 'dispatch']; }
-    function isAdmin()     { return role() == 'admin'; }
+    function isMember()  { return role() in ['admin', 'dispatch', 'dmo', 'desk', 'viewer']; }
+    function canOrder()  { return role() in ['admin', 'dispatch', 'dmo', 'desk']; }
+    function isAdmin()   { return role() == 'admin'; }
+    function isSup()     { return role() in ['dispatch', 'dmo']; }   // Supervisor, and DMO with the same rights
+    function isViewer()  { return role() == 'viewer'; }
+    function isDesk()    { return role() == 'desk'; }
 
-    // Team list: everyone on the team can see it (for names); only Admin changes it.
-    // A signed-in person may read their own entry so the app can tell them if they're not authorised.
+    // Staff permissions the Admin switches on and off (Settings → Team & emails): config/perms.
+    // A switch that isn't set yet counts as on (the usual rights).
+    function permsPath() { return /databases/$(database)/documents/config/perms; }
+    function perm(k)     { return !exists(permsPath()) || get(permsPath()).data.get(k, true) != false; }
+    function deskMay(k)  { return !isDesk() || perm(k); }
+
+    // An order must carry its day (YYYY-MM-DD) and an "open" flag that matches its status,
+    // because the dashboard's queue and daily lists are built from those two fields.
+    function consistent(d) {
+      return d.day is string && d.day.size() == 10
+        && d.open == (d.get('mark', '') != 'Cancelled' && d.get('dispatchedAt', null) == null)
+        // an order on hold can't be dispatched
+        && !(d.get('hold', false) == true && d.get('dispatchedAt', null) != null)
+        // dispatch depot: empty, or one of the depots
+        && d.get('depot', '') in ['', 'Transport Nagar', 'Harrawala', 'Doiwala'];
+    }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    // Each change must be signed by the person making it. The one exception is the Admin's one-time upgrade of old orders.
+    function stamped() { return request.resource.data.get('updatedBy', '') == myEmail() && request.resource.data.get('updatedAt', 0) is number; }
+    function upgradeOnly() { return isAdmin() && changed().hasOnly(['day', 'open', 'dispatchedAt', 'dispatchedBy']); }
+
+    // Order time must be "now" for everyone except the Admin (30 minutes' leeway for a slow connection or phone clock).
+    function nowish(t) { return t is number && t > request.time.toMillis() - 1800000 && t < request.time.toMillis() + 300000; }
+    // Start of today in India (UTC+5:30), in milliseconds.
+    function todayStart() { return math.floor((request.time.toMillis() + 19800000) / 86400000.0) * 86400000 - 19800000; }
+
+    // Dispatch actions: mark dispatched, undo dispatch, correct the dispatch time.
+    function onlyDispatchFields() { return changed().hasOnly(['dispatchedAt', 'dispatchedBy', 'open', 'updatedBy', 'updatedAt']); }
+    function dispatchOk() {
+      return (isSup() && perm('supFixTime'))
+        // Dispatch may mark dispatched or undo, but not move an existing dispatch time
+        || resource.data.get('dispatchedAt', null) == null
+        || request.resource.data.get('dispatchedAt', null) == null;
+    }
+    // Marking an order dispatched needs the customer's phone number, a vehicle number and a dispatch depot (the one-time upgrade of old records is exempt).
+    function newlyDispatched() {
+      return resource.data.get('dispatchedAt', null) == null && request.resource.data.get('dispatchedAt', null) != null;
+    }
+    function hasPhone() {
+      return request.resource.data.get('phone', '') is string && request.resource.data.get('phone', '').matches('^[^0-9]*([0-9][^0-9]*){10,}$');
+    }
+    function hasDepot() {
+      return request.resource.data.get('depot', '') in ['Transport Nagar', 'Harrawala', 'Doiwala'];
+    }
+    function hasVehicle() {
+      return request.resource.data.get('vehicle', '') is string && request.resource.data.get('vehicle', '').matches('.*[A-Za-z0-9].*');
+    }
+    // Dispatching may fill in the vehicle, driver and depot at the same time (anyone who can mark dispatched).
+    function dispatchWithVehicle() {
+      return newlyDispatched() && changed().hasOnly(['dispatchedAt', 'dispatchedBy', 'open', 'vehicle', 'driver', 'driverPhone', 'depot', 'phone', 'updatedBy', 'updatedAt']);
+    }
+    // Put on hold / release: Admin, Supervisor and Dispatch, on any order not yet dispatched.
+    function holdOk() {
+      return changed().hasOnly(['hold', 'holdAt', 'holdBy', 'holdNote', 'updatedBy', 'updatedAt'])
+        && request.resource.data.get('hold', false) is bool
+        && resource.data.get('dispatchedAt', null) == null;
+    }
+    // Cancelling: Admin, Supervisor and Dispatch, on any order not yet dispatched.
+    function cancelOk() {
+      return changed().hasOnly(['mark', 'open', 'hold', 'cancelNote', 'cancelledBy', 'cancelledAt', 'updatedBy', 'updatedAt'])
+        && request.resource.data.get('mark', '') == 'Cancelled'
+        && resource.data.get('dispatchedAt', null) == null
+        // Dispatch staff: any order, unless the Admin switched that off (then only their own orders from today)
+        && (deskMay('dispCancelAny') || (resource.data.get('createdBy', '') == myEmail() && resource.data.orderAt >= todayStart()));
+    }
+    // Whoever cancels an order is recorded, with the time; nobody can write someone else's name there.
+    function newlyCancelled() {
+      return resource.data.get('mark', '') != 'Cancelled' && request.resource.data.get('mark', '') == 'Cancelled';
+    }
+    function cancelRecordOk() {
+      return (!newlyCancelled() || (request.resource.data.get('cancelledBy', '') == myEmail() && nowish(request.resource.data.get('cancelledAt', 0))))
+        && (!changed().hasAny(['cancelledBy', 'cancelledAt']) || request.resource.data.get('cancelledBy', '') == myEmail());
+    }
+    // Changing details or cancelling: not after dispatch, order time unchanged;
+    // Dispatch only on their own orders from today.
+    // Advance orders: schedAt = start of the day the order is meant to go (a number), never in the past when set.
+    function schedValid(d) { return d.get('schedAt', null) == null || (d.schedAt is number && d.schedAt >= todayStart()); }
+    // Change the delivery date, or send to today: Admin, Supervisor and Dispatch, any order not yet dispatched.
+    function schedOk() {
+      return changed().hasOnly(['schedAt', 'day', 'updatedBy', 'updatedAt'])
+        && request.resource.data.get('schedAt', null) is number
+        && schedValid(request.resource.data)
+        && resource.data.get('dispatchedAt', null) == null;
+    }
+    // Nobody can mark an advance order dispatched before its day (send it to today first).
+    function notBeforeItsDay() {
+      return request.resource.data.get('schedAt', null) == null || request.resource.data.schedAt <= request.time.toMillis();
+    }
+    function detailsOk() {
+      return !changed().hasAny(['dispatchedAt', 'dispatchedBy', 'orderAt', 'day', 'schedAt'])
+        && resource.data.get('dispatchedAt', null) == null
+        && (isSup() || (resource.data.get('createdBy', '') == myEmail() && resource.data.orderAt >= todayStart()));
+    }
+
+    // Team list: everyone on the team can see it (for names); only Admin adds, removes or changes designations.
+    // Each person may only record their own sign-in on their own record, and only a newer one.
     match /members/{email} {
-      allow read: if isMember() || (signedIn() && email == request.auth.token.email.lower());
-      allow write: if isAdmin();
+      allow read: if isMember() || (signedIn() && email == myEmail());
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (signedIn() && email == myEmail()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sess', 'sessAt', 'device'])
+        && request.resource.data.sess == request.auth.token.auth_time
+        && request.resource.data.sess > resource.data.get('sess', 0));
     }
 
-    // Dealer list
+    // Settings. "report" (email lists) and "usage" (the reads count) are Admin-only; "vehicles" is hidden from Viewers.
+    // Dealers: the record holds the names ("list") and each dealer's contact person, phone and area ("info", by name).
+    //   Admin changes anything, including renaming and removing. A Supervisor may add one dealer at the end of the list.
+    //   Supervisor and Dispatch may change "info" only, so they can't rename, reorder or remove dealers.
+    // Vehicles: Admin changes freely; Supervisor and Dispatch may add or update, but the list can't get shorter.
+    // "perms" (the staff permission switches) is changed by the Admin only; everyone on the team reads it.
     match /config/{docId} {
-      allow read: if isMember();
-      allow write: if isAdmin();
+      allow read: if isMember() && (!(docId in ['report', 'usage', 'brief']) || isAdmin()) && (docId != 'vehicles' || !isViewer());
+      allow write: if isAdmin()
+        || (docId == 'dealers' && isSup() && perm('supAddDealer') && resource != null
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['list', 'info'])
+            && (perm('staffDealerEdit') || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['info']))
+            && request.resource.data.list.size() == resource.data.list.size() + 1
+            && request.resource.data.list[0:resource.data.list.size()] == resource.data.list)
+        || (docId == 'dealers' && canOrder() && perm('staffDealerEdit') && resource != null
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['info'])
+            && request.resource.data.info is map)
+        || (docId == 'vehicles' && canOrder() && perm('staffVehicles')
+            && (resource == null || request.resource.data.list.size() >= resource.data.list.size()));
     }
 
     // Orders
     match /orders/{orderId} {
       allow read: if isMember();
-      allow create: if canOrder() && request.resource.data.createdBy == request.auth.token.email.lower();
-      allow update, delete: if canOrder();
+      allow create: if canOrder()
+        && request.resource.data.createdBy == myEmail()
+        && consistent(request.resource.data)
+        && request.resource.data.get('dispatchedAt', null) == null
+        && schedValid(request.resource.data)
+        && (isAdmin() || nowish(request.resource.data.orderAt));
+      allow update: if canOrder()
+        && consistent(request.resource.data)
+        && !changed().hasAny(['createdBy', 'createdAt'])
+        && (stamped() || upgradeOnly())
+        && (upgradeOnly() || !newlyDispatched() || (hasVehicle() && hasDepot() && hasPhone() && notBeforeItsDay()))
+        && (upgradeOnly() || cancelRecordOk())
+        && (isAdmin()
+            || (onlyDispatchFields() && dispatchOk() && deskMay('dispMark'))
+            || (dispatchWithVehicle() && deskMay('dispMark'))
+            || (holdOk() && deskMay('dispHold'))
+            || cancelOk()
+            || (schedOk() && deskMay('dispHold'))
+            || detailsOk());
+      allow delete: if isAdmin();
     }
 
-    // Dispatch records (one per dispatched order, same ID as the order)
+    // Daily totals used by the Summary tab (recalculated by the app after each change)
+    match /daysum/{day} {
+      allow read: if isMember();
+      allow write: if canOrder();
+    }
+
+    // Old dispatch records from version 1. Read once by the Admin during the upgrade; kept as a backup.
     match /deliveries/{orderId} {
       allow read: if isMember();
-      allow write: if canDispatch();
+      allow write: if isAdmin();
+    }
+
+    // ---------- Depot stock ledger (stock.html) ----------
+    // Confidential. Only the Admin and the people on stockConfig/access ({emails: [...]}, kept by the Admin) can read or
+    // write anything here; everyone else is refused, whatever they find in the site's public code.
+    // Everyone on the list can view. Changes (entries, the daily SAP / physical reports) only by the Admin, Supervisors
+    // and DMOs (5 Nov 2026); they carry who saved them, and the ledger's start day can only be changed by the Admin.
+    // Settings (opening balances, capacity, the access list) are changed by the Admin only.
+    function stockAccessPath() { return /databases/$(database)/documents/stockConfig/access; }
+    function stockOpeningPath() { return /databases/$(database)/documents/stockConfig/opening; }
+    function stockUser() {
+      return isAdmin() || (isMember() && exists(stockAccessPath())
+        && myEmail() in get(stockAccessPath()).data.get('emails', []));
+    }
+    function stockEditor() { return isAdmin() || (isSup() && stockUser()); }   // Supervisor and DMO (isSup), on the list
+    function stockStartDay() { return exists(stockOpeningPath()) ? get(stockOpeningPath()).data.get('date', '') : ''; }
+    // Month-end closes (stockCloses/YYYY-MM, 6 Nov 2026): on the 1st the ledger saves each depot's stock and each dealer's
+    // balance at the end of the month just ended, and works from there, so opening it loads this month only. Last month
+    // can still take entries: each one updates its close in the same write; on the next 1st the close is worked out
+    // again in full and becomes final. Months are counted by the server's clock (a phone with a wrong date can't close
+    // a month early or write into an old one). Entries and SAP reports: this month and last month only, Admin excepted.
+    function stockMonthNo(ym) { return int(ym.split('-')[0]) * 12 + int(ym.split('-')[1]); }
+    function stockNowNo() { return request.time.year() * 12 + request.time.month(); }
+    function stockOpenMonth(day) { return day is string && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && stockMonthNo(day) >= stockNowNo() - 1; }
+    // Dashboard dispatches (16 Nov 2026). stockEntries/ord_<order id>: written in the same write as the order by whoever marks
+    // it dispatched, undoes it, changes it or deletes it. The line has to match the order as it is after that write.
+    function orderPath(id) { return /databases/$(database)/documents/orders/$(id); }
+    function orderLineOk(entryId) {
+      let d = request.resource.data;
+      let o = getAfter(orderPath(d.get('orderId', '-'))).data;
+      return canOrder() && entryId == 'ord_' + d.get('orderId', '')
+        && d.keys().hasOnly(['type', 'src', 'orderId', 'date', 'godown', 'dealer', 'items', 'target', 'ref', 'at', 'by', 'fixed'])
+        && d.get('type', '') == 'dispatch' && d.get('src', '') == 'order' && d.get('by', '') == myEmail()
+        && stockOpenMonth(d.get('date', null)) && d.get('items', null) is map
+        && o.get('dispatchedAt', null) != null && o.get('mark', '') != 'Cancelled'
+        && d.get('godown', '') == {'Transport Nagar': 'TPN', 'Harrawala': 'HAR', 'Doiwala': 'DOI'}.get(o.get('depot', ''), '-')
+        && d.get('dealer', '') == o.get('dealer', '');
+    }
+    // taken off when the order is deleted, its dispatch undone or it is cancelled (in the same write)
+    function orderLineGone() {
+      let oid = resource.data.get('orderId', '-');
+      return canOrder() && resource.data.get('src', '') == 'order' && stockOpenMonth(resource.data.get('date', null))
+        && (!existsAfter(orderPath(oid)) || getAfter(orderPath(oid)).data.get('dispatchedAt', null) == null
+            || getAfter(orderPath(oid)).data.get('mark', '') == 'Cancelled');
+    }
+    function deletedPath(id) { return /databases/$(database)/documents/stockDeleted/$(id); }
+    match /stockEntries/{entryId} {
+      allow read: if stockUser();
+      allow create: if (stockEditor() && (isAdmin() || (request.resource.data.get('by', '') == myEmail()
+          && request.resource.data.get('type', '') in ['billing', 'dispatch', 'arrival', 'correction']
+          && stockOpenMonth(request.resource.data.get('date', null)) && request.resource.data.get('items', null) is map
+          // a correction needs its reason (16 Nov 2026)
+          && (request.resource.data.type != 'correction' || (request.resource.data.get('reason', '') is string && request.resource.data.get('reason', '').size() >= 3)))))
+        || orderLineOk(entryId);
+      allow update: if isAdmin() || (resource.data.get('src', '') == 'order' && orderLineOk(entryId));   // ledger entries aren't edited; dashboard lines follow their order
+      // an entry typed in the ledger can be taken off only with a copy kept for the Admin (stockDeleted/<entry id>, same write)
+      allow delete: if isAdmin()
+        || (stockEditor() && !entryId.matches('^ord_.*') && stockOpenMonth(resource.data.get('date', null)) && existsAfter(deletedPath(entryId)))
+        || orderLineGone();
+    }
+    // copies of entries taken off the ledger, with who and when: written by whoever takes one off; read by the Admin only
+    match /stockDeleted/{id} {
+      allow read: if isAdmin();
+      allow create: if canOrder() && request.resource.data.get('deletedBy', '') == myEmail() && request.resource.data.get('deletedAt', null) is string;
+      allow update, delete: if isAdmin();
+    }
+    // a month to close again (a dashboard dispatch dated in a month that already has its close, or dealer names re-paired)
+    match /stockMarks/{month} {
+      allow read: if stockUser();
+      allow write: if canOrder() && month.matches('^[0-9]{4}-[0-9]{2}$')
+        && request.resource.data.keys().hasOnly(['at', 'by']) && request.resource.data.get('by', '') == myEmail();
+    }
+    // bags dispatched in orders each day, by depot and product (kept by the dashboard with each dispatch)
+    match /dispday/{day} {
+      allow read: if stockUser();
+      allow write: if canOrder() && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && request.resource.data.get('date', '') == day
+        && request.resource.data.keys().hasOnly(['date', 'TPN', 'HAR', 'DOI', 'at', 'by', 'fixed']) && request.resource.data.get('by', '') == myEmail();
+    }
+    // the Admin's Brief: a summary the ledger saves while someone who can make changes has it open
+    match /stockBrief/{id} {
+      allow read: if isAdmin();
+      allow write: if stockEditor() && id == 'latest' && request.resource.data.get('by', '') == myEmail();
+    }
+    match /stockReports/{reportId} {
+      allow read: if stockUser();
+      allow create, update: if stockEditor() && (isAdmin() || (request.resource.data.get('by', '') == myEmail()
+        && stockOpenMonth(request.resource.data.get('date', null)) && request.resource.data.date != stockStartDay()
+        && reportId == request.resource.data.date + '_' + request.resource.data.get('godown', '')));
+      allow delete: if isAdmin();
+    }
+    match /stockCloses/{month} {
+      allow read: if stockUser();
+      // made once a month has ended
+      allow create: if stockEditor() && month.matches('^[0-9]{4}-[0-9]{2}$') && stockMonthNo(month) <= stockNowNo() - 1
+        && request.resource.data.get('month', '') == month && request.resource.data.get('date', null) is string
+        && request.resource.data.get('stock', null) is map && request.resource.data.get('books', null) is map;
+      // kept up to date while it can take entries, and made final on the next 1st; older closes: the Admin only
+      allow update: if isAdmin() || (stockEditor() && month.matches('^[0-9]{4}-[0-9]{2}$') && stockMonthNo(month) >= stockNowNo() - 2
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stock', 'books', 'moves', 'entries', 'at', 'by', 'final', 'from']));
+      allow delete: if isAdmin();
+    }
+    match /stockConfig/{docId} {
+      allow read: if stockUser();
+      allow write: if isAdmin();
     }
   }
 }

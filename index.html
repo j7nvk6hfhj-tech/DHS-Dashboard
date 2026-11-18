@@ -3,7 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>DHS Logistics Order Dashboard</title>
+<title>DHS Logistics - Orders Dashboard (Alpha)</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ffffff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="DHS Logistics">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/svg+xml" href="icons/logo.svg">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
 <style>
@@ -16,7 +25,7 @@ img{max-width:100%}
 :root{
   --bg:#eceff1; --surface:#ffffff; --surface-2:#f5f7f8; --ink:#1b2227; --muted:#5b6770; --line:#d3d9dd;
   --accent:#e9a514; --accent-ink:#6b4a00; --accent-soft:#fbefd2;
-  --pending:#b8431b; --pending-soft:#fbe6dd; --done:#2b7a4b; --done-soft:#dcefe3;
+  --pending:#b8431b; --pending-soft:#fbe6dd; --done:#2b7a4b; --done-soft:#dcefe3; --sched:#1f4f8a; --sched-soft:#e4ecf7;
   --road:#2560a0; --road-soft:#dde8f5; --void:#7b858c; --void-soft:#e7eaec;
   --plate:#ffffff; --plate-ink:#111;
   --f-display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
@@ -26,13 +35,13 @@ img{max-width:100%}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#13171a; --surface:#1b2125; --surface-2:#20272c; --ink:#e5e9eb; --muted:#9ba6ad; --line:#2f383e;
   --accent:#f0b429; --accent-ink:#f6cf74; --accent-soft:#3a2f12;
-  --pending:#f08a62; --pending-soft:#3d2219; --done:#6cc590; --done-soft:#17321f;
+  --pending:#f08a62; --pending-soft:#3d2219; --done:#6cc590; --done-soft:#17321f; --sched:#8fb6ea; --sched-soft:#17263a;
   --road:#7fb0ea; --road-soft:#182a3f; --void:#8d979e; --void-soft:#262d32;
   --plate:#e9ecee; --plate-ink:#111; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#13171a; --surface:#1b2125; --surface-2:#20272c; --ink:#e5e9eb; --muted:#9ba6ad; --line:#2f383e;
   --accent:#f0b429; --accent-ink:#f6cf74; --accent-soft:#3a2f12;
-  --pending:#f08a62; --pending-soft:#3d2219; --done:#6cc590; --done-soft:#17321f;
+  --pending:#f08a62; --pending-soft:#3d2219; --done:#6cc590; --done-soft:#17321f; --sched:#8fb6ea; --sched-soft:#17263a;
   --road:#7fb0ea; --road-soft:#182a3f; --void:#8d979e; --void-soft:#262d32;
   --plate:#e9ecee; --plate-ink:#111; color-scheme:dark}
 *{box-sizing:border-box}
@@ -42,22 +51,76 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
 .bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-block:10px}
 .brand{display:flex;align-items:center;gap:10px;margin-right:auto}
-.mark{width:34px;height:34px;border-radius:8px;background:var(--accent);display:grid;place-items:center}
-.mark svg{width:20px;height:20px}
+.logo{width:46px;height:46px;flex:none;display:block}
+.gate .logo{width:64px;height:64px}
 .brand h1{font-family:var(--f-display);font-weight:700;font-size:22px;letter-spacing:.02em;margin:0;line-height:1}
 .brand small{display:block;color:var(--muted);font-size:12px;letter-spacing:.04em}
-.who{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
-.who img{width:26px;height:26px;border-radius:50%}
+.menuwrap{position:relative}
+.menubtn svg{width:16px;height:16px;flex:none}
+.menuname{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.menu{position:absolute;right:0;top:calc(100% + 6px);z-index:15;display:grid;min-width:230px;max-width:calc(100vw - 32px);padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.16)}
+.menu.left{right:auto;left:0}
+.menuhead{display:grid;gap:1px;padding:8px 10px 10px;margin-bottom:4px;border-bottom:1px solid var(--line);font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.menuhead b{color:var(--ink);font-size:15px}
+.mi{appearance:none;display:flex;gap:10px;align-items:center;min-height:44px;padding:10px;border:0;border-radius:7px;background:none;color:var(--ink);font:500 15px var(--f-body);text-align:left;cursor:pointer}
+.mi:hover,.mi:focus-visible{background:var(--surface-2)}
+.mi:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.mi.danger{color:var(--pending)}
+.mi.sdot{justify-self:end;min-height:0;padding:0 7px;margin-top:2px;font:500 11px/1.5 var(--f-body);color:var(--muted);opacity:.45;border-radius:4px}
+.mi.sdot:hover,.mi.sdot:focus-visible{opacity:1}
+.mi svg{width:18px;height:18px;flex:none}
 .conn{font-size:12px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--void-soft);color:var(--void)}
 .conn.ok{background:var(--done-soft);color:var(--done)}
-nav.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;padding-bottom:0}
+.refbtn{padding:4px 7px;line-height:0}
+.reads{display:inline-block;margin-left:4px;padding:0 7px;border-radius:99px;font-weight:600;letter-spacing:0;white-space:nowrap;background:var(--done-soft);color:var(--done)}
+.reads.amber{background:var(--accent-soft);color:var(--accent-ink)}
+.reads.red{background:var(--pending-soft);color:var(--pending)}
+.reads.off{background:var(--void-soft);color:var(--void)}
+#permBox{display:grid;gap:14px}
+#maintBox{display:grid;gap:12px}
+#maintBar{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;margin-top:10px}
+#maintBar .btn{min-height:34px;padding:4px 14px}
+/* the "under maintenance" screen staff see while the Admin has paused the dashboard */
+.maint{position:fixed;inset:0;z-index:25;background:var(--bg);display:grid;place-items:center;padding:24px 16px;overflow:auto}
+.maintcard{max-width:30rem;width:100%;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:28px 22px;text-align:center;display:grid;gap:12px;justify-items:center}
+.maintcard img{width:64px;height:64px}
+.maintcard h2{margin:0}
+.maintcard p{margin:0}
+.maintcard .actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+body.paused{overflow:hidden}
+.permgrp{display:grid;gap:10px;padding-top:12px;border-top:1px solid var(--line)}
+.permgrp>b{font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+label.perm{display:flex;gap:10px;align-items:flex-start;text-transform:none;letter-spacing:0;font-size:15px;font-weight:500;color:var(--ink);cursor:pointer}
+label.perm input{width:18px;height:18px;flex:none;margin:2px 0 0;padding:0;accent-color:var(--accent)}
+label.perm small{display:block;font-size:13px;font-weight:400;color:var(--muted);margin-top:2px;line-height:1.35}
+label.perm small b{font-weight:600}
+.hcount{font-weight:500;color:var(--muted)}
+label.perm small b.yes{color:var(--done)}
+label.perm small b.no{color:var(--pending)}
+@media (prefers-reduced-motion:no-preference){.refbtn.spin svg{animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}}
+/* headings (18 Nov 2026): outlined, evenly spaced. One row on a computer; on a phone an even grid, 3 to a row */
+nav.tabs{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;padding:6px 0 12px}
 nav.tabs::-webkit-scrollbar{display:none}
-.tab{appearance:none;border:0;background:none;color:var(--muted);font:600 15px var(--f-body);padding:10px 14px;border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap;display:flex;gap:6px;align-items:center}
-.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.tab{appearance:none;border:1px solid var(--line);border-radius:99px;background:var(--surface);color:var(--muted);font:600 15px var(--f-body);padding:7px 18px;min-height:38px;cursor:pointer;white-space:nowrap;display:flex;gap:6px;align-items:center;justify-content:center}
+.tab:hover{color:var(--ink);border-color:var(--muted)}
+.tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tab[aria-selected="true"]{color:var(--accent-ink);background:var(--accent-soft);border-color:var(--accent)}
 .tab .n{font:600 12px var(--f-body);background:var(--pending-soft);color:var(--pending);border-radius:99px;padding:1px 7px}
 .tab .n:empty{display:none}
+[lang="hi"]{font-family:system-ui,-apple-system,"Noto Sans Devanagari","Nirmala UI","Kohinoor Devanagari",sans-serif}
+label [lang="hi"],th[lang="hi"],th [lang="hi"],.kpi span[lang="hi"],.ticket .stub [lang="hi"],.qpos [lang="hi"]{font-size:14px;letter-spacing:0;text-transform:none}
+@media (max-width:600px){
+  nav.tabs{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;overflow:visible;padding:4px 0 10px}
+  .tab{grid-column:span var(--span,2);min-width:0;padding:6px 4px;min-height:36px;font-size:14px;gap:4px}
+  .tab .n{padding:1px 5px}
+}
+@media (max-width:370px){.tab{font-size:13px}}
 main{padding-block:20px 60px}
 section.view{display:grid;gap:18px}
+@media (max-width:600px){.sumbar{width:100%;display:flex;flex-wrap:wrap;gap:10px}.sumbar .fld{flex:1 1 100%;min-width:0!important}.sumbar .btn{flex:1 1 140px;justify-content:center}}
+/* the stock ledger, opened like the other headings: full width, filling the screen below the tabs */
+body.stockon main{padding-block:0}
+.stockframe{display:block;border:0;width:calc(100% + 2 * max(16px, env(safe-area-inset-left, 0px)));margin:0 calc(-1 * max(16px, env(safe-area-inset-left, 0px)));min-height:420px;background:transparent}
 h2{font-family:var(--f-display);font-weight:600;font-size:26px;margin:0;text-wrap:balance;letter-spacing:.01em}
 h3{font-family:var(--f-display);font-weight:600;font-size:19px;margin:0;letter-spacing:.02em}
 .sub{color:var(--muted);margin:2px 0 0;max-width:68ch}
@@ -86,19 +149,45 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 .btn.danger{color:var(--pending);border-color:var(--pending)}
 .btn[disabled]{opacity:.45;cursor:not-allowed}
 /* ticket */
-.ticket{display:flex;align-items:stretch;border:1px dashed var(--accent);background:var(--accent-soft);border-radius:var(--r);overflow:hidden}
+.ticket{display:flex;flex-wrap:wrap;align-items:stretch;border:1px dashed var(--accent);background:var(--accent-soft);border-radius:var(--r);overflow:hidden}
+.ticket .stub.q{background:var(--ink);color:var(--bg)}
+.ticket .stub.h{background:var(--accent-soft);color:var(--accent-ink);border:1px solid var(--accent)}
+.ticket .body{flex:1 1 200px}
+@media (max-width:520px){.ticket .stub{flex:1}}
+.ord{font-size:.5em;vertical-align:super;line-height:0;margin-left:1px}
+.row .meta .inl{color:var(--pending);font-weight:600}
 .ticket .stub{background:var(--accent);color:#1b1400;padding:10px 16px;display:grid;place-items:center;text-align:center;min-width:92px}
 .ticket .stub b{font:700 40px/1 var(--f-display)}
-.ticket .stub span{font:600 11px var(--f-body);letter-spacing:.1em;text-transform:uppercase}
+.ticket .stub span{font:600 11px var(--f-body);letter-spacing:.08em;text-transform:uppercase;max-width:110px}
 .ticket .body{padding:12px 16px;display:grid;gap:2px;align-content:center;min-width:0}
 .ticket .body strong{font-size:16px}
+.btn.wa{color:var(--done);border-color:var(--done);text-decoration:none;justify-self:start}
+.ticket .btn.wa{margin-top:6px}
+.dupwarn{display:block;color:var(--pending);background:var(--pending-soft);border-radius:6px;padding:6px 10px}
+.dispnote{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap;background:var(--done-soft);border:1px solid var(--done);border-radius:8px;padding:10px 14px}
+.dispnote span{flex:1;min-width:180px}
+.qcard .by b{font-weight:600;color:var(--ink)}
 /* token chip */
-.tok{font:700 20px/1 var(--f-display);font-variant-numeric:tabular-nums;display:inline-grid;place-items:center;min-width:42px;padding:6px 6px 5px;border-radius:6px;background:var(--accent-soft);color:var(--accent-ink);border:1px solid var(--accent)}
-.tok small{display:block;font:600 10px var(--f-body);letter-spacing:.05em;color:var(--muted);margin-top:2px}
+.tok{font:700 20px/1 var(--f-display);font-variant-numeric:tabular-nums;display:inline-grid;place-items:center;gap:3px;min-width:60px;padding:7px 10px 6px;border-radius:6px;background:var(--accent-soft);color:var(--accent-ink);border:1px solid var(--accent);flex:none}
+.tok .tn{white-space:nowrap}
+.tok small{display:block;font:600 11px var(--f-body);letter-spacing:.03em;color:var(--muted);white-space:nowrap}
 .plate{font:600 12px/1 ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;background:var(--plate);color:var(--plate-ink);border:1.5px solid #222;border-radius:4px;padding:3px 6px;letter-spacing:.06em;white-space:nowrap}
 .pill{font-size:12px;font-weight:600;padding:2px 9px;border-radius:99px;white-space:nowrap;display:inline-block}
 .pill.Pending{background:var(--pending-soft);color:var(--pending)}
 .pill.Dispatched{background:var(--done-soft);color:var(--done)}
+h1 .alpha{font-size:.62em;font-weight:600;color:var(--accent-ink);white-space:nowrap}
+.pill.Scheduled{background:var(--sched-soft);color:var(--sched)}
+.qcard.sched{border-left-color:var(--sched)}
+.qcard.sched .qpos b{font-size:26px}
+.schinfo{color:var(--sched);font-weight:600}
+.kpi.sch b{color:var(--sched)}
+.dayhead{margin:14px 0 2px;font-size:15px}
+.ticket .stub.s{background:var(--sched-soft);color:var(--sched);border:1px solid var(--sched)}
+.linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--accent-ink);text-decoration:underline;cursor:pointer}
+.pill.Onhold{background:var(--accent-soft);color:var(--accent-ink)}
+.qcard.held{border-left-color:var(--accent)}
+.qcard.held .qpos{color:var(--accent-ink)}
+.holdinfo{color:var(--accent-ink)}
 .pill.Cancelled{background:var(--void-soft);color:var(--void);text-decoration:line-through}
 /* list rows */
 .list{display:grid;gap:8px}
@@ -129,6 +218,27 @@ input:focus,select:focus,textarea:focus,button:focus-visible{outline:2px solid v
 .kpi b{display:block;font:700 30px/1.1 var(--f-display);font-variant-numeric:tabular-nums}
 .kpi small{color:var(--muted)}
 .kpi.hot b{color:var(--pending)}
+button.kpi{font:inherit;color:inherit;text-align:left;width:100%;cursor:pointer;display:block}
+button.kpi:hover,button.kpi:focus-visible{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);outline:none}
+button.kpi > span::after{content:" ›";color:var(--muted)}
+.kpi.on{border-color:var(--accent);background:var(--accent-soft)}
+.kpis.compact .kpi{padding:9px 12px}.kpis.compact .kpi b{font-size:22px}
+@media (max-width:600px){.kpis.compact{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi .brow{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 5px;margin-top:2px;line-height:1}
+.kpi .brow b{display:inline;font-size:19px;line-height:1.05}
+.kpis.compact .kpi .brow b{font-size:16px}
+.kpi .brow small{font-size:12px;font-weight:600;line-height:1}
+#jobWarn{margin-top:10px}
+#jobWarn b{font-weight:700}
+.eta{color:var(--done);font-weight:600}
+.etabox{display:grid;gap:6px;margin:4px 0 14px}
+.nowrap{white-space:nowrap}
+.kpi.held b,td.held{color:var(--accent-ink);font-weight:700}
+.kpi.cxl b{color:var(--muted)}
+#dp-vehicle::placeholder,#e-vehicle::placeholder,#f-vehicle::placeholder{text-transform:none}
+.fld select.bad{border-color:var(--pending);box-shadow:0 0 0 3px var(--pending-soft)}
+.depot b{font-weight:600}
+.fld input.bad{border-color:var(--pending);box-shadow:0 0 0 3px var(--pending-soft)}
 /* tables */
 .tscroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
 table{border-collapse:collapse;width:100%;font-size:14px;font-variant-numeric:tabular-nums}
@@ -140,17 +250,27 @@ tbody tr.click{cursor:pointer}
 tbody tr.click:hover td{background:var(--surface-2)}
 tr.dim td{color:var(--muted)}
 tr.tot td{font-weight:700;background:var(--surface-2)}
+/* Summary and All orders tables: the box scrolls inside itself (at most 70% of the screen high), so the column
+   headings stay pinned at the top; in the Summary tables the first column (dealer, depot, date) stays pinned on the left */
+.tscroll.pin{max-height:min(70vh,640px);overflow:auto}
+.tscroll.pin th{z-index:2;box-shadow:inset 0 -1px 0 var(--line)}
+.tscroll.pinfirst td:first-child,.tscroll.pinfirst th:first-child{position:sticky;left:0;box-shadow:inset -1px 0 0 var(--line)}
+.tscroll.pinfirst td:first-child{z-index:1;background:var(--surface)}
+.tscroll.pinfirst th:first-child{z-index:3;box-shadow:inset -1px -1px 0 var(--line)}
+.tscroll.pinfirst tr.tot td:first-child,.tscroll.pinfirst tbody tr.click:hover td:first-child{background:var(--surface-2)}
 td.num,th.num{text-align:right}
 td.red{color:var(--pending);font-weight:700}
 .items{display:grid;gap:8px}
 .item{display:grid;grid-template-columns:minmax(0,1fr) 110px 76px;gap:8px;align-items:center}
-.it-req{font-size:12px;color:var(--muted);text-align:center}
 .items-foot{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .combo{position:relative}
 .combo-list{position:absolute;left:0;right:0;top:100%;margin-top:4px;max-height:232px;overflow-y:auto;background:var(--surface);border:1px solid var(--line);border-radius:8px;z-index:8;box-shadow:0 10px 28px rgba(0,0,0,.14)}
 .opt{padding:9px 12px;cursor:pointer}
 .opt:hover,.opt.on{background:var(--accent-soft)}
 .opt.none{color:var(--muted);cursor:default;font-size:13px}
+.opt.self{border-top:1px solid var(--line);font-weight:600}
+.opt .hint{font-weight:400;margin-left:6px}
+.plate.self{background:transparent;color:var(--ink);border-style:dashed;font-family:var(--f-body);letter-spacing:.02em}
 .filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end}
 /* sheet (modal) */
 .sheet{position:fixed;inset:0;z-index:20;background:rgba(10,14,17,.45);display:grid;place-items:center;padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
@@ -166,7 +286,149 @@ td.red{color:var(--pending);font-weight:700}
 .gate .brand{margin:0}
 .or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12px;letter-spacing:.06em;text-transform:uppercase}
 .or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
-.who .btn{margin-left:4px}
+.repgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:14px}
+.repcard{border:1px solid var(--line);border-radius:var(--r);padding:16px;display:grid;gap:12px;background:var(--surface-2);min-width:0}
+.repcard .sub{font-size:13px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.repnext{margin:0;font-weight:600;color:var(--accent-ink)}
+.repevery{padding:9px 0;font-weight:600}
+.repform{display:flex;gap:8px}
+.repform input{flex:1;min-width:0}
+.switch{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--ink);white-space:nowrap;cursor:pointer}
+.switch input{width:20px;height:20px;accent-color:var(--done)}
+.topview{display:grid;gap:18px}
+.seg{display:inline-flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:10px;background:var(--surface);justify-self:start;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.seg::-webkit-scrollbar{display:none}
+@media (max-width:440px){.seg.seg4{display:grid;grid-template-columns:1fr 1fr;width:100%}.seg.seg4 .segb{justify-content:center}}
+.segb{appearance:none;border:0;background:none;color:var(--muted);font:600 14px var(--f-body);padding:8px 14px;border-radius:7px;cursor:pointer;white-space:nowrap;display:flex;gap:6px;align-items:center}
+.segb[aria-selected="true"]{background:var(--ink);color:var(--bg)}
+.segb .n{font:600 12px var(--f-body);background:var(--pending-soft);color:var(--pending);border-radius:99px;padding:1px 7px}
+.segb .n:empty{display:none}
+.loadbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--accent-soft);border:1px solid var(--accent);border-radius:8px;padding:10px 14px}
+.loadbar span{flex:1;min-width:200px}
+.track{font-size:12px;padding:3px 9px;margin-left:6px;text-decoration:none;border-color:var(--road);color:var(--road)}
+.track.old{border-color:var(--line);color:var(--muted)}
+.vstat{font-size:12px;font-weight:600}
+.helppanel{position:fixed;inset:0;z-index:40;background:var(--bg);display:flex;flex-direction:column;padding-top:env(safe-area-inset-top,0px)}
+.helpbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px max(16px,env(safe-area-inset-right,0px)) 8px max(16px,env(safe-area-inset-left,0px));background:var(--surface);border-bottom:1px solid var(--line)}
+.helpbar b{font-family:var(--f-display);font-size:18px;letter-spacing:.02em}
+.helppanel iframe{flex:1;width:100%;border:0;background:var(--bg)}
+.vstat.ok{color:var(--done)} .vstat.soon{color:var(--accent-ink)} .vstat.gone{color:var(--pending)} .vstat.none{color:var(--muted)}
+/* ---------- visual pass (26 Oct): one height for every box, tighter spacing, nothing left alone in a row ---------- */
+main{padding-block:16px 48px}
+section.view,.topview{gap:14px}
+h2{font-size:24px}
+.sub{font-size:14px}
+.panel{padding:16px}
+.cols{gap:16px}
+input:not([type=checkbox]):not([type=radio]),select{height:42px}
+/* iPhone (10 Nov): Safari draws date, time and month boxes its own way (taller, centred, wider than their column).
+   Draw them like every other box: same height, text on the left, never wider than the column. */
+input[type=date],input[type=datetime-local],input[type=month],input[type=time]{-webkit-appearance:none;appearance:none;display:block;width:100%;max-width:100%;min-width:0;text-align:left;line-height:1.2}
+input::-webkit-date-and-time-value{text-align:left;margin:0;min-height:1.2em}
+/* iPhone zooms the page in when a box with text under 16px is tapped: 16px there only */
+@supports (-webkit-touch-callout:none){input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px}}
+textarea{min-height:42px}
+.fld{gap:6px;align-content:start}
+label{font-size:11.5px;letter-spacing:.07em}
+.lblrow{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;min-height:18px}
+.lblnote{font-size:11.5px;color:var(--muted);white-space:nowrap}
+.dlrow{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.dlacts{display:flex;gap:6px;flex-shrink:0}
+#dle-name:disabled{opacity:.65;cursor:not-allowed}
+.quick{display:inline-flex;gap:4px}
+.qbtn{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:600 11.5px/1.5 var(--f-body);padding:0 9px;border-radius:99px;cursor:pointer}
+.qbtn:hover{border-color:var(--accent);background:var(--accent-soft)}
+.ro{height:42px;display:flex;align-items:center;padding:0 11px;border:1px dashed var(--line);border-radius:8px;color:var(--muted)}
+/* New Order: required fields first, optional details under a divider */
+.oform{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px 14px}
+.oform .s2{grid-column:span 2}.oform .s3{grid-column:span 3}.oform .s4{grid-column:span 4}.oform .s6{grid-column:1/-1}
+.fsec{display:flex;align-items:baseline;gap:4px 10px;flex-wrap:wrap;padding-top:12px;border-top:1px solid var(--line)}
+.fsec span{font:600 12px var(--f-body);letter-spacing:.08em;text-transform:uppercase;color:var(--ink)}
+.fsec small{font-size:12px;color:var(--muted)}
+.formfoot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-top:2px}
+.formfoot .btn{min-width:150px;justify-content:center}
+@media (max-width:520px){
+  .oform{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 10px}
+  .oform .s2,.oform .s3,.oform .s4{grid-column:1/-1}
+  .oform .h{grid-column:span 1}
+  .formfoot .btn{flex:1 1 100%}
+}
+/* product lines */
+.item{grid-template-columns:minmax(0,232px) 92px 36px;justify-content:start}
+@media (max-width:520px){.item{grid-template-columns:minmax(0,1fr) 92px 36px;justify-content:stretch}.item:not(:has(.xbtn)) .it-bags{grid-column:span 2}.item > span:empty{display:none}}
+.xbtn{width:36px;height:42px;padding:0!important;justify-content:center;font-size:20px;line-height:1;color:var(--muted)}
+.items-foot{min-height:30px}
+/* queue, on-hold and scheduled cards: details left, buttons in a column on the right */
+.qcard{grid-template-columns:58px minmax(0,1fr);gap:12px;padding:12px 14px}
+.qbody{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:20px;align-items:start;min-width:0}
+.qbody > *{grid-column:1}
+.qbody > .acts{grid-column:2;grid-row:1 / span 6;display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:min-content;gap:6px;margin:0;align-self:center;width:290px}
+.qbody > .acts .btn{width:100%;justify-content:center}
+.qbody > .confirm{grid-column:1 / -1}
+.qcard .top{gap:8px}
+.qcard .facts{gap:3px 14px;align-items:center;margin-top:5px}
+.qpos b{font-size:34px}
+.plate{padding:2px 6px;font-size:11.5px}
+.btn.sm.track{padding:1px 9px;font-size:12px;margin-left:4px}
+.dayhead{margin:6px 0 0}
+@media (max-width:640px){
+  .qcard{grid-template-columns:42px minmax(0,1fr);padding:12px}
+  .qpos b{font-size:28px}
+  .qpos span{font-size:10px}
+  .qbody{grid-template-columns:minmax(0,1fr)}
+  .qbody > .acts{grid-column:1;grid-row:auto;grid-template-columns:1fr 1fr;width:auto;margin-top:10px}
+}
+/* count cards: one even row of 8 on a computer, 4 x 2 on a tablet, 2 per row on a phone */
+.kpis{grid-template-columns:repeat(8,minmax(0,1fr));gap:8px}
+@media (max-width:1100px){.kpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media (max-width:600px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpis .kpi{display:flex;flex-direction:column;gap:2px;padding:10px 12px;min-width:0}
+.kpi span{font-size:11px;letter-spacing:.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi b{font-size:28px}
+.kpi small{font-size:12px;line-height:1.3}
+.kpis.compact .kpi b{font-size:22px}
+.etabox{margin:0}
+/* All orders filters: one row on a computer, two columns on a phone */
+.filters{grid-template-columns:repeat(6,minmax(0,1fr));gap:10px 12px;padding:12px 16px}
+@media (max-width:760px){.filters{grid-template-columns:repeat(2,minmax(0,1fr))}}
+/* Vehicles form */
+.vform{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:12px 14px;align-items:end}
+.vform .vlink{grid-column:1 / -1}
+@media (max-width:640px){.vform{grid-template-columns:repeat(2,minmax(0,1fr))}.vform .vsave{grid-column:1 / -1}.vform .vsave .btn{width:100%;justify-content:center}}
+/* lists and windows */
+.row{padding:9px 12px}
+.list{gap:6px}
+form.grid{gap:12px 14px}
+.sheet .card{padding:18px;gap:12px}
+.roles{gap:10px}
+.sub .req{color:var(--pending)}
+.eta.small{font-size:12px;white-space:nowrap}
+.vform .btn{height:42px}
+@media (max-width:520px){form#editForm{grid-template-columns:repeat(2,minmax(0,1fr))}#editForm > *{grid-column:1 / -1}#editForm > .fld.h{grid-column:span 1}}
+/* Brief (16 Nov 2026): the Admin's alerts and checks */
+.balert{display:grid;gap:4px;padding:12px 14px;border:1px solid var(--line);border-left:4px solid var(--pending);border-radius:var(--r);background:var(--surface)}
+.balert.amber{border-left-color:var(--accent)}
+.balert.ok{border-left-color:var(--done)}
+.balert b{font-size:15px}
+.balert ul{margin:2px 0 0;padding-left:18px;display:grid;gap:2px;font-size:14px;color:var(--muted)}
+.balert .actions{margin-top:4px}
+.kpis.bk{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media (max-width:600px){.kpis.bk{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.pform{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) auto;gap:12px 14px;align-items:end}
+.pform .pnote{grid-column:1/-1;margin:0}
+@media (max-width:640px){.pform{grid-template-columns:minmax(0,1fr)}.pform .btn{width:100%}}
+.prow .meta .off{color:var(--pending);font-weight:600}
+.prow .pnum{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font:600 13px var(--f-body);color:var(--muted);border:1px solid var(--line);font-variant-numeric:tabular-nums}
+.prow .main b{white-space:normal;overflow:visible}
+@media (max-width:600px){.prow{grid-template-columns:auto minmax(0,1fr)}.prow > .btn{grid-column:2;justify-self:start}}
+.bchecks{display:grid;gap:14px;grid-template-columns:minmax(0,1fr)}
+.bchecks>div{min-width:0}
+.bchecks h4{margin:0 0 6px;font:600 15px var(--f-body)}
+.bchecks .tscroll td{white-space:normal;min-width:80px}
+td.okc{color:var(--done);font-weight:600}
+.blimits{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:12px 14px;align-items:end}
+@media (max-width:640px){.blimits{grid-template-columns:minmax(0,1fr)}}
 </style>
 </head>
 <body>
@@ -176,43 +438,61 @@ td.red{color:var(--pending);font-weight:700}
   <div class="wrap">
     <div class="bar">
       <div class="brand">
-        <div class="mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="#1b1400" stroke-width="2"><path d="M3 7h11v9H3z"/><path d="M14 10h4l3 3v3h-7z"/><circle cx="7" cy="17.5" r="1.8" fill="#e9a514"/><circle cx="17" cy="17.5" r="1.8" fill="#e9a514"/></svg></div>
-        <div><h1>DHS Logistics Order Dashboard</h1><small>Dehradun dispatch · FIFO tokens</small></div>
+        <img class="logo" src="icons/logo.svg" alt="DHS Logistics logo" width="46" height="46">
+        <div><h1>DHS Logistics - Orders Dashboard <span class="alpha">(Alpha)</span></h1><small>Dehradun and Harrawala orders. All rights are reserved to Niket Sharma. <span class="reads" id="readsBox" hidden></span></small></div>
       </div>
-      <div class="who" id="who"></div>
+      <button class="btn sm" id="installBtn" type="button" hidden>Install app</button>
       <span class="conn" id="conn">Connecting…</span>
+      <button class="btn sm refbtn" id="refreshBtn" type="button" aria-label="Refresh" title="Refresh: get the latest orders and totals"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button>
+      <div class="menuwrap">
+        <button class="btn sm menubtn" id="menuBtn" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="menu" aria-label="Menu: Help, language, sign out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg><span class="menuname" id="menuName">Menu</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+        <div class="menu" id="menu" role="menu" aria-labelledby="menuBtn" hidden>
+          <div class="menuhead" id="who"></div>
+          <button class="mi" type="button" role="menuitem" id="helpBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14"/><path d="M12 17.5h.01"/></svg><span data-t>Help</span></button>
+          <button class="mi" type="button" role="menuitem" id="langBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/></svg><span id="langTxt" lang="hi">हिंदी</span></button>
+          <button class="mi danger" type="button" role="menuitem" data-g="signout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg><span data-t>Sign out</span></button>
+          <button class="mi sdot" type="button" role="menuitem" id="stockBtn" aria-label="s" hidden>s</button>
+        </div>
+      </div>
     </div>
     <nav class="tabs" role="tablist" id="tabs">
-      <button class="tab" role="tab" data-v="new" aria-selected="true">New Order</button>
-      <button class="tab" role="tab" data-v="queue" aria-selected="false">Queue <span class="n" id="qn"></span></button>
-      <button class="tab" role="tab" data-v="orders" aria-selected="false">All Orders</button>
-      <button class="tab" role="tab" data-v="summary" aria-selected="false">Summary</button>
-      <button class="tab" role="tab" data-v="dealers" aria-selected="false">Dealers</button>
-      <button class="tab" role="tab" data-v="team" aria-selected="false" hidden>Team</button>
+      <!-- Brief: the Admin only, first from the left -->
+      <button class="tab" role="tab" data-v="brief" id="briefTab" aria-selected="false" hidden><span data-t>Brief</span> <span class="n" id="bn"></span></button>
+      <button class="tab" role="tab" data-v="new" aria-selected="true"><span data-t>New Order</span></button>
+      <button class="tab" role="tab" data-v="orders" aria-selected="false"><span data-t>Orders</span> <span class="n" id="qn"></span></button>
+      <button class="tab" role="tab" data-v="summary" aria-selected="false"><span data-t>Summary</span></button>
+      <button class="tab" role="tab" data-v="stock" id="stockTab" aria-selected="false" hidden><span data-t>Stock</span></button>
+      <button class="tab" role="tab" data-v="settings" aria-selected="false"><span data-t>Settings</span></button>
     </nav>
   </div>
 </header>
 
 <main class="wrap">
   <div id="banner" class="banner" hidden></div>
+  <div id="jobWarn" class="banner" role="alert" hidden></div>
+  <div id="maintBar" class="banner" role="status" hidden><span><b data-t>Maintenance is on.</b> <span data-t>Staff see the "under maintenance" screen and can't make changes.</span></span> <button class="btn" type="button" id="maintOff" data-t>Turn off</button></div>
 
   <!-- NEW ORDER -->
   <section class="view" id="v-new">
     <div class="cols">
       <div class="panel" style="display:grid;gap:16px">
-        <div><h2>New order</h2><p class="sub">Token is given by order time: the earliest order of the day is token 1.</p></div>
+        <div><h2 data-t>New order</h2><p class="sub">Fields marked <span class="req">*</span> are required. The rest can be added later.</p></div>
         <div id="lastTicket" hidden></div>
-        <form class="grid" id="orderForm" autocomplete="off">
-          <div class="fld"><label for="f-orderAt">Order date &amp; time <span class="req">*</span></label><input type="datetime-local" id="f-orderAt" required></div>
-          <div class="fld combo"><label for="f-dealer">Dealer <span class="req">*</span></label><input id="f-dealer" required autocomplete="off" role="combobox" aria-expanded="false" aria-controls="f-dealer-list" placeholder="Type or pick a dealer"><div class="combo-list" id="f-dealer-list" role="listbox" hidden></div></div>
-          <div class="fld"><label for="f-party">Party / customer <span class="req">*</span></label><input id="f-party" required placeholder="e.g. Sharma Builders"></div>
-          <div class="fld"><label for="f-phone">Phone</label><input id="f-phone" inputmode="tel" placeholder="98xxxxxxxx"></div>
-          <div class="fld wide"><label for="f-location">Delivery location</label><input id="f-location" placeholder="e.g. Rajpur Road, near Jakhan"></div>
-          <div class="fld wide"><label>Products &amp; bags (50 kg) <span class="req">*</span></label><div class="items" id="f-items"></div></div>
-          <div class="fld"><label for="f-vehicle">Vehicle no.</label><input id="f-vehicle" placeholder="UK07 CA 1234" style="text-transform:uppercase"></div>
-          <div class="fld"><label for="f-driver">Driver</label><input id="f-driver"></div>
-          <div class="fld wide"><label for="f-remarks">Remarks</label><textarea id="f-remarks" rows="1"></textarea></div>
-          <div class="actions wide fld"><button class="btn primary" type="submit" id="saveBtn">Add order &amp; get token</button><span class="hint" id="formHint"></span></div>
+        <form class="oform" id="orderForm" autocomplete="off">
+          <div class="fld combo s3"><label for="f-dealer"><span data-t>Dealer</span> <span class="req">*</span></label><input id="f-dealer" required autocomplete="off" role="combobox" aria-expanded="false" aria-controls="f-dealer-list" placeholder="Type or pick a dealer"><div class="combo-list" id="f-dealer-list" role="listbox" hidden></div></div>
+          <div class="fld s3"><label for="f-party"><span data-t>Party / customer</span> <span class="req">*</span></label><input id="f-party" required placeholder="e.g. Sharma Builders"></div>
+          <div class="fld s2"><div class="lblrow"><label for="f-phone"><span data-t>Phone</span></label><span class="lblnote">needed before dispatch</span></div><input id="f-phone" inputmode="tel" placeholder="98xxxxxxxx"></div>
+          <div class="fld s4"><label for="f-location"><span data-t>Delivery location</span></label><input id="f-location" placeholder="e.g. Rajpur Road, near Jakhan"></div>
+          <div class="fld s6"><label><span data-t>Products &amp; bags (50 kg)</span> <span class="req">*</span></label><div class="items" id="f-items"></div></div>
+          <div class="fld s3"><div class="lblrow"><label for="f-orderAt"><span data-t>Order date &amp; time</span> <span class="req">*</span></label><span class="lblnote" id="f-orderAt-hint" hidden>Set when you save</span></div><input type="datetime-local" id="f-orderAt" required></div>
+          <div class="fld s3"><div class="lblrow"><label for="f-deliver"><span data-t>Deliver on</span></label><span class="quick"><button class="qbtn" type="button" data-act="deliver-today">Today</button><button class="qbtn" type="button" data-act="deliver-tomorrow">Tomorrow</button></span></div><input type="date" id="f-deliver"></div>
+          <div class="fsec s6"><span>Dispatch &amp; delivery</span><small>optional now · depot and vehicle are needed before dispatch</small></div>
+          <div class="fld s2 h"><label for="f-depot"><span data-t>Dispatch depot</span></label><select id="f-depot"><option value="">Select depot</option><option>Transport Nagar</option><option>Harrawala</option><option>Doiwala</option></select></div>
+          <div class="fld s2 h combo"><label for="f-vehicle"><span data-t>Vehicle no.</span></label><input id="f-vehicle" data-kind="vehicle" role="combobox" aria-expanded="false" aria-controls="f-vehicle-list" autocomplete="off" placeholder="UK07 CA 1234" style="text-transform:uppercase"><div class="combo-list" id="f-vehicle-list" role="listbox" hidden></div></div>
+          <div class="fld s2 h"><label for="f-driver"><span data-t>Driver</span></label><input id="f-driver" placeholder="Name"></div>
+          <div class="fld s2 h"><label for="f-driverPhone"><span data-t>Driver's phone</span></label><input id="f-driverPhone" inputmode="tel" placeholder="98xxxxxxxx"></div>
+          <div class="fld s4"><label for="f-remarks"><span data-t>Remarks</span></label><input id="f-remarks" placeholder="Anything the driver or office should know"></div>
+          <div class="formfoot s6"><button class="btn primary" type="submit" id="saveBtn">Add order</button><span class="hint" id="formHint"></span></div>
         </form>
       </div>
       <div class="panel" style="display:grid;gap:12px">
@@ -222,64 +502,170 @@ td.red{color:var(--pending);font-weight:700}
     </div>
   </section>
 
+  <!-- ORDERS: Queue | All orders -->
+  <div class="topview" id="t-orders" hidden>
+  <div class="seg seg4" role="tablist" aria-label="Orders view">
+    <button class="segb" type="button" role="tab" data-top="orders" data-sub="queue" aria-selected="true"><span data-t>Queue</span> <span class="n" id="qn2"></span></button>
+    <button class="segb" type="button" role="tab" data-top="orders" data-sub="hold" aria-selected="false"><span data-t>On hold</span> <span class="n" id="hn"></span></button>
+    <button class="segb" type="button" role="tab" data-top="orders" data-sub="sched" aria-selected="false"><span data-t>Scheduled</span> <span class="n" id="schn"></span></button>
+    <button class="segb" type="button" role="tab" data-top="orders" data-sub="orders" aria-selected="false"><span data-t>All orders</span></button>
+  </div>
   <!-- QUEUE -->
-  <section class="view" id="v-queue" hidden>
-    <div class="head"><div><h2>Dispatch queue</h2><p class="sub">Pending orders, oldest first. Number 1 goes next. Tapping <b>Mark dispatched</b> records the dispatch time and takes the order out of the queue.</p></div></div>
+  <section class="view" id="v-queue">
+    <div class="head"><div><h2 data-t>Dispatch queue</h2><p class="sub">Pending orders, oldest first. Number 1 goes next.</p></div></div>
     <div id="queueNote" class="hint"></div>
+    <div class="dispnote" id="dispNote" role="status" hidden></div>
     <div class="list" id="queueList"></div>
+  </section>
+
+  <!-- SCHEDULED (advance orders) -->
+  <section class="view" id="v-sched" hidden>
+    <div class="head"><div><h2 data-t>Scheduled</h2><p class="sub">Advance orders. Each joins the queue by itself at 6 am on its day.</p></div></div>
+    <div class="list" id="schedList"></div>
+  </section>
+
+  <!-- ON HOLD -->
+  <section class="view" id="v-hold" hidden>
+    <div class="head"><div><h2 data-t>On hold</h2><p class="sub">Out of the queue and can't be dispatched until released.</p></div></div>
+    <div class="list" id="holdList"></div>
   </section>
 
   <!-- ALL ORDERS -->
   <section class="view" id="v-orders" hidden>
-    <div class="head"><div><h2>All orders</h2><p class="sub">Every order across days. Filter by date, dealer, status or party. Tap a row to edit.</p></div>
+    <div class="head"><div><h2 data-t>All orders</h2><p class="sub">Today and days with pending orders are live; older dates load when you ask. Tap a row to open it.</p></div>
       <button class="btn" id="exportBtn" type="button">Download Excel</button></div>
     <div class="panel filters">
-      <div class="fld"><label for="o-from">From</label><input type="date" id="o-from"></div>
-      <div class="fld"><label for="o-to">To</label><input type="date" id="o-to"></div>
-      <div class="fld"><label for="o-dealer">Dealer</label><select id="o-dealer"></select></div>
-      <div class="fld"><label for="o-status">Status</label><select id="o-status"><option value="">All</option><option>Pending</option><option>Dispatched</option><option>Cancelled</option></select></div>
-      <div class="fld"><label for="o-q">Search party / location</label><input id="o-q" type="search" placeholder="Type a name"></div>
+      <div class="fld"><label for="o-from"><span data-t>From</span></label><input type="date" id="o-from"></div>
+      <div class="fld"><label for="o-to"><span data-t>To</span></label><input type="date" id="o-to"></div>
+      <div class="fld"><label for="o-dealer"><span data-t>Dealer</span></label><select id="o-dealer"></select></div>
+      <div class="fld"><label for="o-depot"><span data-t>Depot</span></label><select id="o-depot"><option value="*">All depots</option><option>Transport Nagar</option><option>Harrawala</option><option>Doiwala</option><option value="-">No depot yet</option></select></div>
+      <div class="fld"><label for="o-status"><span data-t>Status</span></label><select id="o-status"><option value="">All</option><option>Pending</option><option>On hold</option><option>Scheduled</option><option>Dispatched</option><option>Cancelled</option></select></div>
+      <div class="fld"><label for="o-q"><span data-t>Search</span></label><input id="o-q" type="search" placeholder="Party, location or phone"></div>
     </div>
+    <div class="kpis compact" id="okpis"></div>
+    <div class="loadbar" id="ordersLoad" hidden></div>
     <div class="hint" id="ordersCount"></div>
-    <div class="tscroll"><table><thead><tr><th>Token</th><th>Order time</th><th>Dealer</th><th>Party</th><th>Location</th><th>Products</th><th class="num">Total bags</th><th>Vehicle</th><th>Driver</th><th>Status</th><th>Dispatched at</th><th class="num">Time taken</th><th>Entered by</th></tr></thead><tbody id="ordersBody"></tbody></table></div>
+    <div class="tscroll pin"><table><thead><tr><th data-t>Order of the day</th><th class="num" data-t>In line</th><th data-t>Order time</th><th data-t>Entered by</th><th data-t>Dealer</th><th data-t>Party</th><th data-t>Location</th><th data-t>Products</th><th class="num" data-t>Total bags</th><th data-t>Vehicle</th><th data-t>Driver</th><th data-t>Depot</th><th data-t>Status</th><th data-t>Dispatched at</th><th class="num" data-t>Time taken</th></tr></thead><tbody id="ordersBody"></tbody></table></div>
   </section>
+  </div>
 
   <!-- SUMMARY -->
   <section class="view" id="v-summary" hidden>
-    <div class="head"><div><h2>Summary</h2><p class="sub">Day-wise and dealer-wise for the month you pick. Time taken is order time to dispatch time, for dispatched orders.</p></div>
-      <div class="fld" style="min-width:170px"><label for="s-month">Month</label><input type="month" id="s-month"></div></div>
+    <div class="head"><div><h2 data-t>Summary</h2><p class="sub">The month you pick, by dealer and by day. Time taken is order time to dispatch time; averages leave out Self vehicles.</p></div>
+      <div class="actions sumbar" style="align-items:flex-end"><div class="fld" style="min-width:170px"><label for="s-month"><span data-t>Month</span></label><input type="month" id="s-month"></div>
+      <button class="btn sm" id="sumRefresh" type="button">Refresh</button><button class="btn sm" id="sumMaster" type="button" hidden>Download master file</button><button class="btn sm" id="sumRecalc" type="button" hidden>Recalculate month</button></div></div>
+    <div class="hint" id="sumNote"></div>
     <div class="kpis" id="kpis"></div>
-    <h3>Dealer-wise</h3>
-    <div class="tscroll"><table><thead><tr><th>Dealer</th><th class="num">Orders</th><th class="num">Pending</th><th class="num">Dispatched</th><th class="num">Cancelled</th><th class="num">Bags</th><th class="num">Pending bags</th><th class="num">Avg time</th><th>Last order</th></tr></thead><tbody id="dealerBody"></tbody></table></div>
-    <h3>Day-wise</h3>
-    <div class="tscroll"><table><thead><tr><th>Date</th><th class="num">Orders</th><th class="num">Pending</th><th class="num">Dispatched</th><th class="num">Cancelled</th><th class="num">Bags</th><th class="num">Pending bags</th><th class="num">Avg time</th></tr></thead><tbody id="dayBody"></tbody></table></div>
+    <p class="hint">Tap a card to see those orders. Tap a dealer, a depot or a day to download its orders and totals as Excel.</p>
+    <div class="panel etabox" id="etaBox"></div>
+    <h3 data-t>Dealer-wise</h3>
+    <div class="tscroll pin pinfirst"><table><thead><tr><th data-t>Dealer</th><th class="num" data-t>Orders</th><th class="num" data-t>Pending</th><th class="num" data-t>On hold</th><th class="num" data-t>Dispatched</th><th class="num" data-t>Cancelled</th><th class="num" data-t>Bags</th><th class="num" data-t>Pending bags</th><th class="num" data-t>Avg time</th><th data-t>Last order</th></tr></thead><tbody id="dealerBody"></tbody></table></div>
+    <h3 data-t>Depot-wise</h3>
+    <div class="tscroll pin pinfirst"><table><thead><tr><th data-t>Depot</th><th class="num" data-t>Orders</th><th class="num" data-t>Pending</th><th class="num" data-t>On hold</th><th class="num" data-t>Dispatched</th><th class="num" data-t>Cancelled</th><th class="num" data-t>Bags</th><th class="num" data-t>Pending bags</th><th class="num" data-t>Avg time</th></tr></thead><tbody id="depotBody"></tbody></table></div>
+    <h3 data-t>Day-wise</h3>
+    <div class="tscroll pin pinfirst"><table><thead><tr><th data-t>Date</th><th class="num" data-t>Orders</th><th class="num" data-t>Pending</th><th class="num" data-t>On hold</th><th class="num" data-t>Dispatched</th><th class="num" data-t>Cancelled</th><th class="num" data-t>Bags</th><th class="num" data-t>Pending bags</th><th class="num" data-t>Avg time</th></tr></thead><tbody id="dayBody"></tbody></table></div>
   </section>
 
+  <!-- BRIEF: the Admin's own page (16 Nov 2026): what needs attention, yesterday at a glance, stock by depot, this month's checks -->
+  <section class="view" id="v-brief" hidden>
+    <div class="head"><div><h2 data-t>Brief</h2><p class="sub">What needs your attention now, and the day at a glance. Only the Admin sees this page.</p></div>
+      <button class="btn sm" id="briefLimitsBtn" type="button">Alert limits</button></div>
+    <form class="panel blimits" id="briefLimits" hidden></form>
+    <div class="list" id="briefAlerts"></div>
+    <h3 id="briefYdayTitle">Yesterday</h3>
+    <div class="kpis compact bk" id="briefYday"></div>
+    <h3>Pending now</h3>
+    <div class="kpis compact bk" id="briefPend"></div>
+    <div class="head"><h3>Stock by depot</h3><button class="btn sm" id="briefStockBtn" type="button">Bring up to date</button></div>
+    <p class="hint" id="briefStockNote"></p>
+    <div class="tscroll"><table><thead><tr><th>Depot</th><th class="num">SAP stock</th><th class="num">Physical stock</th><th class="num">Pending orders</th><th>Last SAP report</th></tr></thead><tbody id="briefStock"></tbody></table></div>
+    <h3>This month's checks</h3>
+    <div id="briefChecks" class="bchecks"></div>
+  </section>
+
+  <!-- STOCK: the depot stock ledger (stock.html), for the Admin and the people on its access list -->
+  <section class="view" id="v-stock" hidden>
+    <iframe id="stockFrame" class="stockframe" title="Depot stock ledger"></iframe>
+  </section>
+  <!-- SETTINGS: Dealers | Vehicles | Team -->
+  <div class="topview" id="t-settings" hidden>
+  <div class="seg seg4" role="tablist" aria-label="Settings section">
+    <button class="segb" type="button" role="tab" data-top="settings" data-sub="dealers" aria-selected="true"><span data-t>Dealers</span></button>
+    <button class="segb" type="button" role="tab" data-top="settings" data-sub="vehicles" aria-selected="false"><span data-t>Vehicles</span></button>
+    <button class="segb" type="button" role="tab" data-top="settings" data-sub="products" aria-selected="false" hidden><span data-t>Products</span></button>
+    <button class="segb" type="button" role="tab" data-top="settings" data-sub="team" aria-selected="false" hidden><span data-t>Team &amp; emails</span></button>
+  </div>
   <!-- DEALERS -->
   <section class="view" id="v-dealers" hidden>
-    <div class="head"><div><h2>Authorised dealers</h2><p class="sub">These names fill the Dealer list on every order. Every order needs a dealer; the party is typed freely.</p></div></div>
+    <div class="head"><div><h2><span data-t>Authorised dealers</span> <span class="hcount" id="dealerCount" hidden></span></h2><p class="sub">These names fill the Dealer list on every order.</p></div></div>
     <div class="panel" id="dealerEditor"></div>
+  </section>
+
+  <!-- PRODUCTS (18 Nov 2026): the Admin adds products; they appear everywhere products do -->
+  <section class="view" id="v-products" hidden>
+    <div class="head"><div><h2><span data-t>Products</span> <span class="hcount" id="productCount"></span></h2><p class="sub">These fill the Product list on every order, and the product columns of the stock ledger and the Brief. Only the Admin can change them.</p></div></div>
+    <form class="panel pform" id="productForm" autocomplete="off">
+      <div class="fld"><label for="pr-name">New product name</label><input id="pr-name" maxlength="40" placeholder="e.g. PPC Premium" required></div>
+      <div class="fld"><label for="pr-label">Column heading on the dealer sheet <span class="lblnote">(optional)</span></label><input id="pr-label" maxlength="14" placeholder="as on your Excel"></div>
+      <div class="fld"><button class="btn primary" type="submit">Add product</button></div>
+      <p class="hint pnote">A new product goes at the end of the Product list on orders, and at the end of the stock ledger's columns: Opening Balance, Dealer Stock, the dealer-sheet paste and the Excel files. Orders already saved keep their products.</p>
+    </form>
+    <div class="list" id="productList"></div>
+  </section>
+
+  <!-- VEHICLES -->
+  <section class="view" id="v-vehicles" hidden>
+    <div class="head"><div><h2 data-t>Vehicles &amp; GPS tracking</h2><p class="sub">Paste a truck&#39;s WheelsEye link; orders with that vehicle number then show Track.</p></div></div>
+    <div class="panel" id="vehicleBox"></div>
+    <div class="panel" style="display:grid;gap:8px">
+      <h3 data-t>How to get a tracking link</h3>
+      <ol class="sub" style="margin:0;padding-left:20px">
+        <li>Open the WheelsEye app and select the truck.</li>
+        <li>Tap Share location and copy the link (it starts with https://wheelseye.com/ui/track).</li>
+        <li>Paste it in the form above; the truck number fills in. Tap Save vehicle.</li>
+      </ol>
+      <p class="hint">Anyone who has a tracking link can see that truck's location, so only share it inside the team.</p>
+    </div>
   </section>
 
   <!-- TEAM (admin only) -->
   <section class="view" id="v-team" hidden>
-    <div class="head"><div><h2>Team &amp; roles</h2><p class="sub">Only emails listed here can sign in. Change a person's role any time; it applies immediately.</p></div></div>
+    <div class="head"><div><h2 data-t>Team &amp; roles</h2><p class="sub">Only emails listed here can sign in. Role changes apply immediately.</p></div></div>
     <div class="panel" id="teamBox"></div>
+    <div class="panel" id="permBox" hidden></div>
+    <div class="panel" id="maintBox" hidden>
+      <div class="head"><div><h3 data-t>Maintenance</h3><p class="sub">Pause the dashboard for everyone except you, for example while you upload an update. Staff see an "under maintenance" message and can't make changes until you switch it off; their screens come back by themselves.</p></div></div>
+      <label class="perm"><input type="checkbox" id="maintOn"><span><span data-t>Pause the dashboard for staff</span><small id="maintLine"></small></span></label>
+      <div class="field"><label for="maintText" data-t>Message to staff (optional)</label><input id="maintText" type="text" maxlength="200" placeholder="The dashboard is under maintenance. Please check again after some time."></div>
+    </div>
+    <div class="panel" id="reportBox"></div>
     <div class="panel" style="display:grid;gap:12px">
-      <h3>Who can do what</h3>
+      <h3 data-t>Who can do what</h3>
       <div class="roles">
-        <div><b>Admin</b>Everything: orders, dispatch, dealer list and this Team page.</div>
-        <div><b>Dispatch</b>Add, edit and cancel orders, and mark orders Dispatched (records the dispatch time).</div>
-        <div><b>Order desk</b>Add, edit and cancel orders. Cannot mark Dispatched.</div>
-        <div><b>Viewer</b>Sees the queue, orders and summaries. Cannot change anything.</div>
+        <div><b>Admin</b>Everything, including this Team &amp; emails page, changing order times, changing dispatched orders, deleting orders, renaming and removing dealers, removing vehicles, and the master file.</div>
+        <div><b>Supervisor</b>Add, change and cancel any order that isn't dispatched; hold, reschedule, mark dispatched, correct dispatch times and undo; add dealers and edit their contact details; add vehicles and tracking links.</div>
+        <div><b>DMO</b>The same rights as a Supervisor.</div>
+        <div><b>Dispatch</b>Add orders; change only their own orders from today; cancel, hold or reschedule any order that isn't dispatched; mark dispatched and undo; edit dealers' contact details; add vehicles and tracking links.</div>
+        <div><b>Viewer</b>Sees the queue, orders and summaries and can download Excel. Can't open order details, see vehicles, or change anything.</div>
       </div>
-      <p class="hint">These limits are enforced by the database security rules, not just hidden on screen.</p>
+      <p class="hint">These are the usual rights. The Admin can switch some of them off (or the Excel time columns on) under Staff permissions above. They are enforced by the database security rules, not just hidden on screen.</p>
     </div>
   </section>
+  </div>
 </main>
 
 <div class="sheet" id="sheet" hidden><div class="card" id="sheetCard"></div></div>
+<div class="maint" id="maint" role="alertdialog" aria-modal="true" aria-labelledby="maintT" aria-describedby="maintMsg" hidden>
+  <div class="maintcard"><img src="icons/logo.svg" alt=""><h2 id="maintT" data-t>Under maintenance</h2><p id="maintMsg"></p>
+    <p class="sub" data-t>This page opens again by itself when it's back.</p>
+    <div class="actions"><button class="btn primary" type="button" id="maintRetry" data-t>Check again</button><button class="btn" type="button" id="maintSignout" data-t>Sign out</button></div></div>
+</div>
 <div class="toast" id="toast" hidden></div>
+</div>
+<!-- Help guide: help.html loads only when someone taps Help, in this panel, so the dashboard keeps running underneath -->
+<div class="helppanel" id="helpPanel" role="dialog" aria-modal="true" aria-labelledby="helpTitle" hidden>
+  <div class="helpbar"><b id="helpTitle">Help guide</b><button class="btn sm" id="helpClose" type="button">Close</button></div>
+  <iframe id="helpFrame" title="Help guide"></iframe>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script type="module" src="app.js"></script>
